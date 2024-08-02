@@ -1,0 +1,5 @@
+---
+- name: Deploy and test Kubernetes cluster with k3s, Nginx, HPA, monitoring and k6 load test
+  import_tasks: install_k3s.yml
+  when: inventory_hostname in groups['k3s']
+  tags: [ 'never', 'k3s' ]

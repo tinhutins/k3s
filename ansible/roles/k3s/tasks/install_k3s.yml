@@ -1,0 +1,519 @@
+---
+- name: Install k3s
+  shell: |
+    curl -sfL https://get.k3s.io | sh -
+  args:
+    creates: /usr/local/bin/kubectl
+
+- name: Ensure kubectl is available
+  command: kubectl version --client
+  register: kubectl_version
+
+- name: Wait for k3s configuration file
+  wait_for:
+    path: /etc/rancher/k3s/k3s.yaml
+    state: present
+    timeout: 60
+  when: kubectl_version.stdout is defined
+
+- name: Set up kubectl config
+  shell: |
+    mkdir -p ~/.kube
+    cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
+  when: kubectl_version.stdout is defined
+
+- name: Install bash-completion package
+  become: true
+  package:
+    name: bash-completion
+    state: present
+
+- name: Add kubectl autocomplete to bashrc
+  lineinfile:
+    path: ~/.bashrc
+    line: 'source <(kubectl completion bash)'
+    state: present
+
+- name: Source bashrc to apply changes
+  shell: |
+    bash -c 'source ~/.bashrc'
+  args:
+    executable: /bin/bash
+
+- name: Wait for Kubernetes nodes to be ready
+  command: kubectl wait --for=condition=Ready node --all --timeout=60s
+  register: wait_result
+  until: wait_result.rc == 0
+  retries: 5
+  delay: 10
+    
+#add python3-pip
+- name: Install pip3 latest
+  package:
+    name:
+      - python3-pip
+    state: latest
+
+- name: Install pre-requisites pip packages
+  pip:
+    name:
+      - pyyaml
+      - kubernetes 
+    executable: pip3
+
+#setup nginx deployment in k3s
+- name: Apply Nginx ConfigMap
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: nginx-config
+        namespace: default
+      data:
+        nginx.conf: |
+          user  nginx;
+          worker_processes  auto;
+
+          error_log  /var/log/nginx/error.log notice;
+          pid        /var/run/nginx.pid;
+
+
+          events {
+              worker_connections  1024;
+          }
+
+          http {
+              default_type  application/octet-stream;
+
+              log_format  main  '$remote_addr - $remote_user [$time_local] "$request" '
+                                '$status $body_bytes_sent "$http_referer" '
+                                '"$http_user_agent" "$http_x_forwarded_for"';
+
+              access_log  /var/log/nginx/access.log  main;
+
+              sendfile        on;
+              #tcp_nopush     on;
+
+              keepalive_timeout  65;
+
+              #gzip  on;
+
+              include /etc/nginx/conf.d/*.conf;
+            
+              server {
+                  listen 80;
+
+                    root /usr/share/nginx/html;
+                    index index.html;
+
+
+                    location /invalid-endpoint {
+                        return 404 'Not Found';
+                    }
+              }
+              include       /etc/nginx/mime.types;
+          }
+                  
+- name: Apply Kubernetes deployment for Nginx
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: nginx-deployment
+        namespace: default
+      spec:
+        selector:
+          matchLabels:
+            app: nginx
+        template:
+          metadata:
+            labels:
+              app: nginx
+          spec:
+            containers:
+            - name: nginx
+              image: nginx:latest
+              resources:
+                    requests:
+                      cpu: "25m"
+                      memory: "30Mi"
+                    limits:
+                      cpu: "40m"
+                      memory: "50Mi"
+              ports:
+              - containerPort: 80
+              volumeMounts:
+              - name: nginx-config
+                mountPath: /etc/nginx/nginx.conf
+                subPath: nginx.conf  
+            volumes:
+            - name: nginx-config
+              configMap:
+                name: nginx-config
+
+- name: Wait for Nginx deployment to be ready using kubectl
+  shell: |
+    kubectl wait --namespace=default --for=condition=available deployment/nginx-deployment --timeout=60s
+  register: wait_result
+  until: wait_result.rc == 0
+  retries: 5
+  delay: 10
+      
+- name: Apply Kubernetes service for Nginx
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: nginx-service
+        namespace: default
+      spec:
+        selector:
+          app: nginx
+        ports:
+        - protocol: TCP
+          port: 80
+          targetPort: 80
+        type: ClusterIP
+
+- name: Create Horizontal Pod Autoscaler (HPA)
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: autoscaling/v2
+      kind: HorizontalPodAutoscaler
+      metadata:
+        name: nginx-deployment-hpa
+        namespace: default
+      spec:
+        scaleTargetRef:
+          apiVersion: apps/v1
+          kind: Deployment
+          name: nginx-deployment
+        minReplicas: 1
+        maxReplicas: 6
+        metrics:
+        - type: Resource
+          resource:
+            name: cpu
+            target:
+              type: Utilization
+              averageUtilization: 30
+
+- name: Ensure nginx port-forward stays up
+  shell: |
+    lsof -t -i:8080 | xargs -r kill -9
+    nohup kubectl -n default port-forward --address 0.0.0.0 service/nginx-service 8080:80 > /dev/null 2>&1 &
+  async: 1
+  poll: 0
+  ignore_errors: true
+
+#setup monitoring
+- name: Create namespace for monitoring
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: monitoring
+
+- name: Create Prometheus ConfigMap
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: prometheus-config
+        namespace: monitoring
+      data:
+        prometheus.yml: |
+          global:
+            scrape_interval: 15s
+
+          scrape_configs:
+            - job_name: 'prometheus'
+              static_configs:
+                - targets: ['localhost:9090']
+
+- name: Create Prometheus deployment
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: prometheus
+        namespace: monitoring
+      spec:
+        replicas: 1
+        selector:
+          matchLabels:
+            app: prometheus
+        template:
+          metadata:
+            labels:
+              app: prometheus
+          spec:
+            containers:
+            - name: prometheus
+              image: prom/prometheus:latest
+              ports:
+              - containerPort: 9090
+              volumeMounts:
+              - name: prometheus-storage-volume
+                mountPath: /prometheus
+              - name: prometheus-config-volume
+                mountPath: /etc/prometheus/
+              args:
+              - "--config.file=/etc/prometheus/prometheus.yml"
+              - "--storage.tsdb.path=/prometheus"
+              - "--web.enable-lifecycle"
+              - "--web.enable-remote-write-receiver"
+            volumes:
+            - name: prometheus-config-volume
+              configMap:
+                name: prometheus-config
+            - name: prometheus-storage-volume
+              emptyDir: {}
+
+- name: Wait for prometheus deployment to be ready using kubectl
+  shell: |
+    kubectl wait --namespace=monitoring --for=condition=available deployment/prometheus --timeout=60s
+  register: wait_result
+  until: wait_result.rc == 0
+  retries: 5
+  delay: 10
+
+- name: Create Prometheus Service
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: prometheus
+        namespace: monitoring
+      spec:
+        selector:
+          app: prometheus
+        ports:
+          - protocol: TCP
+            port: 9090
+            targetPort: 9090
+
+- name: Create ConfigMap for Grafana credentials
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: grafana-admin-credentials
+        namespace: monitoring
+      data:
+        admin-user: "{{ 'admin' | b64encode }}"
+        admin-password: "{{ 'admin' | b64encode }}"
+
+- name: Create Grafana Deployment
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: grafana
+        namespace: monitoring
+      spec:
+        replicas: 1
+        selector:
+          matchLabels:
+            app: grafana
+        template:
+          metadata:
+            labels:
+              app: grafana
+          spec:
+            containers:
+            - name: grafana
+              image: grafana/grafana:latest
+              env:
+                - name: GF_SECURITY_ADMIN_USER
+                  valueFrom:
+                    secretKeyRef:
+                      name: grafana-admin-credentials
+                      key: admin-user
+                - name: GF_SECURITY_ADMIN_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: grafana-admin-credentials
+                      key: admin-password
+              ports:
+                - containerPort: 3000
+
+- name: Wait for grafana deployment to be ready using kubectl
+  shell: |
+    kubectl wait --namespace=monitoring --for=condition=available deployment/grafana --timeout=60s
+  register: wait_result
+  until: wait_result.rc == 0
+  retries: 5
+  delay: 10
+
+- name: Create Grafana Service
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: grafana
+        namespace: monitoring
+      spec:
+        selector:
+          app: grafana
+        ports:
+          - protocol: TCP
+            port: 3000
+            targetPort: 3000
+
+- name: Ensure Prometheus port-forward stays up
+  shell: |
+    lsof -t -i:9090 | xargs -r kill -9
+    nohup kubectl -n monitoring port-forward --address 0.0.0.0 service/prometheus 9090:9090 > /dev/null 2>&1 &
+  async: 1
+  poll: 0
+  ignore_errors: true
+
+- name: Ensure Grafana port-forward stays up
+  shell: |
+    lsof -t -i:3000 | xargs -r kill -9
+    nohup kubectl -n monitoring port-forward --address 0.0.0.0 service/grafana 3000:3000 > /dev/null 2>&1 &
+  async: 1
+  poll: 0
+  ignore_errors: true
+
+- name: Create Prometheus datasource in Grafana
+  community.grafana.grafana_datasource:
+    grafana_url: "http://localhost:3000"
+    grafana_user: "admin"
+    grafana_password: "admin"
+    name: "Prometheus"
+    ds_type: "prometheus"
+    ds_url: "http://prometheus.monitoring.svc:9090"
+    access: "proxy"
+    is_default: true
+    tls_skip_verify: true
+    state: present
+  register: datasource_result
+
+- name: Create k6 dashboard in Grafana
+  community.grafana.grafana_dashboard:
+    grafana_url: http://localhost:3000
+    grafana_user: admin
+    grafana_password: admin
+    dashboard_url: https://grafana.com/api/dashboards/19665/revisions/2/download
+    folder: "General"
+    overwrite: true
+
+#do a load test on nginx
+- name: Create ConfigMap for k6 Load Test Script
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: load-test-script
+        namespace: default
+      data:
+        load_test_script.js: |
+          import http from 'k6/http';
+          import { check, sleep } from 'k6';
+          import { Trend } from 'k6/metrics';
+
+          let normalRequestTrend = new Trend('normal_request_duration');
+          let errorRequestTrend = new Trend('error_request_duration');
+
+          export let options = {
+              stages: [
+                  { duration: '1m', target: 30 },  // Ramp-up to 30 users
+                  { duration: '2m', target: 30 },  // Maintain 30 users for 2 minutes
+                  { duration: '1m', target: 0 },   // Ramp-down to 0 users
+              ]
+          };
+
+          const NORMAL_URL = 'http://nginx-service:80/';
+          const ERROR_URL = 'http://nginx-service:80/invalid-endpoint';
+
+          export default function () {
+              // Simulate normal traffic
+              let normalRes = http.get(NORMAL_URL);
+              check(normalRes, {
+                  'Normal request - status is 200': (r) => r.status === 200,
+              });
+              normalRequestTrend.add(normalRes.timings.duration);
+              console.log(`Normal request status: ${normalRes.status}`);
+              console.log(`Normal request body: ${normalRes.body}`);
+
+              // Simulate error traffic
+              let errorRes = http.get(ERROR_URL);
+              check(errorRes, {
+                  'Error request - status is 404': (r) => r.status === 404,
+              });
+              errorRequestTrend.add(errorRes.timings.duration);
+              console.log(`Error request status: ${errorRes.status}`);
+              console.log(`Error request body: ${errorRes.body}`);
+
+              // Add sleep to mimic real user behavior
+              sleep(1);
+          }
+
+- name: Delete k6 load test job if already exists 
+  kubernetes.core.k8s:
+    state: absent
+    definition:
+      apiVersion: batch/v1
+      kind: Job
+      metadata:
+        name: k6-load-test
+        namespace: default
+
+- name: Create k6 load test job
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: batch/v1
+      kind: Job
+      metadata:
+        name: k6-load-test
+        namespace: default
+      spec:
+        template:
+          metadata:
+            labels:
+              app: k6
+          spec:
+            containers:
+            - name: k6
+              image: grafana/k6:latest
+              env:
+                - name: K6_PROMETHEUS_RW_SERVER_URL
+                  value: "http://prometheus.monitoring.svc:9090/api/v1/write"
+                - name: K6_PROMETHEUS_RW_TREND_STATS
+                  value: "p(95),p(99),min,max"
+              command: ["k6", "run", "-o", "experimental-prometheus-rw", "/scripts/load_test_script.js"]
+              volumeMounts:
+              - name: load-test-script
+                mountPath: /scripts
+            restartPolicy: Never
+            volumes:
+            - name: load-test-script
+              configMap:
+                name: load-test-script
+        backoffLimit: 4
