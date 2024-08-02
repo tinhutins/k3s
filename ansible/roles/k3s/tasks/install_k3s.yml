@@ -47,19 +47,19 @@
   retries: 5
   delay: 10
     
-#add python3-pip
-- name: Install pip3 latest
-  package:
-    name:
-      - python3-pip
-    state: latest
+# #add python3-pip
+# - name: Install pip3 latest
+#   package:
+#     name:
+#       - python3-pip
+#     state: latest
 
-- name: Install pre-requisites pip packages
-  pip:
-    name:
-      - pyyaml
-      - kubernetes 
-    executable: pip3
+# - name: Install pre-requisites pip packages
+#   pip:
+#     name:
+#       - pyyaml
+#       - kubernetes 
+#     executable: pip3
 
 #setup nginx deployment in k3s
 - name: Apply Nginx ConfigMap
