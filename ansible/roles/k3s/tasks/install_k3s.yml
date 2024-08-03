@@ -147,7 +147,7 @@
 - name: Apply Grafana Secret
   kubernetes.core.k8s:
     state: present
-    definition: "{{ lookup('file', 'files/grafana-secret.yml') }}"
+    definition: "{{ lookup('template', 'files/grafana-secret.j2') }}"
   when: grafana_secret_info.resources | length == 0
 
 - name: Apply Grafana Deployment
