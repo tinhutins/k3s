@@ -215,7 +215,7 @@
 
       [Service]
       User=root
-      ExecStart=/usr/bin/kubectl -n default port-forward --address 0.0.0.0 service/nginx-service 8080:80
+      ExecStart=/usr/local/bin/kubectl -n default port-forward --address 0.0.0.0 service/nginx-service 8080:80
       Restart=always
       RestartSec=5
 
@@ -410,7 +410,7 @@
 
       [Service]
       User=root
-      ExecStart=/usr/bin/kubectl  -n monitoring port-forward --address 0.0.0.0 service/prometheus 9090:9090
+      ExecStart=/usr/local/bin/kubectl -n monitoring port-forward --address 0.0.0.0 service/prometheus 9090:9090
       Restart=always
       RestartSec=5
 
@@ -436,7 +436,7 @@
 
       [Service]
       User=root
-      ExecStart=/usr/bin/kubectl -n monitoring port-forward --address 0.0.0.0 service/grafana 3000:3000
+      ExecStart=/usr/local/bin/kubectl -n monitoring port-forward --address 0.0.0.0 service/grafana 3000:3000
       Restart=always
       RestartSec=5
 
