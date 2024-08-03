@@ -135,10 +135,20 @@
     state: present
     definition: "{{ lookup('file', 'files/prometheus-service.yml') }}"
 
+- name: Check if Grafana Secret exists
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Secret
+    namespace: monitoring
+    name: grafana-admin-credentials
+  register: grafana_secret_info
+  ignore_errors: true
+
 - name: Apply Grafana Secret
   kubernetes.core.k8s:
     state: present
     definition: "{{ lookup('file', 'files/grafana-secret.yml') }}"
+  when: grafana_secret_info.resources | length == 0
 
 - name: Apply Grafana Deployment
   kubernetes.core.k8s:
