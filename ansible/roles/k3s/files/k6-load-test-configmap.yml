@@ -1,0 +1,47 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: load-test-script
+  namespace: default
+data:
+  load_test_script.js: |
+    import http from 'k6/http';
+    import { check, sleep } from 'k6';
+    import { Trend } from 'k6/metrics';
+
+    let normalRequestTrend = new Trend('normal_request_duration');
+    let errorRequestTrend = new Trend('error_request_duration');
+
+    export let options = {
+        stages: [
+            { duration: '1m', target: 30 },  // Ramp-up to 30 users
+            { duration: '2m', target: 30 },  // Maintain 30 users for 2 minutes
+            { duration: '1m', target: 0 },   // Ramp-down to 0 users
+        ]
+    };
+
+    const NORMAL_URL = 'http://nginx-service:80/';
+    const ERROR_URL = 'http://nginx-service:80/invalid-endpoint';
+
+    export default function () {
+        // Simulate normal traffic
+        let normalRes = http.get(NORMAL_URL);
+        check(normalRes, {
+            'Normal request - status is 200': (r) => r.status === 200,
+        });
+        normalRequestTrend.add(normalRes.timings.duration);
+        console.log(`Normal request status: ${normalRes.status}`);
+        console.log(`Normal request body: ${normalRes.body}`);
+
+        // Simulate error traffic
+        let errorRes = http.get(ERROR_URL);
+        check(errorRes, {
+            'Error request - status is 404': (r) => r.status === 404,
+        });
+        errorRequestTrend.add(errorRes.timings.duration);
+        console.log(`Error request status: ${errorRes.status}`);
+        console.log(`Error request body: ${errorRes.body}`);
+
+        // Add sleep to mimic real user behavior
+        sleep(1);
+    }

@@ -1,0 +1,29 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: k6-load-test
+  namespace: default
+spec:
+  template:
+    metadata:
+      labels:
+        app: k6
+    spec:
+      containers:
+      - name: k6
+        image: grafana/k6:latest
+        env:
+          - name: K6_PROMETHEUS_RW_SERVER_URL
+            value: "http://prometheus.monitoring.svc:9090/api/v1/write"
+          - name: K6_PROMETHEUS_RW_TREND_STATS
+            value: "p(95),p(99),min,max"
+        command: ["k6", "run", "-o", "experimental-prometheus-rw", "/scripts/load_test_script.js"]
+        volumeMounts:
+        - name: load-test-script
+          mountPath: /scripts
+      restartPolicy: Never
+      volumes:
+      - name: load-test-script
+        configMap:
+          name: load-test-script
+  backoffLimit: 4
