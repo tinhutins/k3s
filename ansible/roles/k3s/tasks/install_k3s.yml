@@ -205,13 +205,31 @@
               type: Utilization
               averageUtilization: 30
 
-- name: Ensure nginx port-forward stays up
-  shell: |
-    lsof -t -i:8080 | xargs -r kill -9
-    nohup kubectl -n default port-forward --address 0.0.0.0 service/nginx-service 8080:80 > /dev/null 2>&1 &
-  async: 1
-  poll: 0
-  ignore_errors: true
+- name: Create systemd service file for nginx port-forward
+  copy:
+    dest: /etc/systemd/system/nginx-port-forward.service
+    content: |
+      [Unit]
+      Description=Port forward for nginx service
+      After=network.target
+
+      [Service]
+      User=root
+      ExecStart=/usr/bin/kubectl -n default port-forward --address 0.0.0.0 service/nginx-service 8080:80
+      Restart=always
+      RestartSec=5
+
+      [Install]
+      WantedBy=multi-user.target
+
+- name: Reload systemd to pick up new nginx-port-forward service
+  command: systemctl daemon-reload
+
+- name: Enable and restart nginx-port-forward service
+  systemd:
+    name: nginx-port-forward
+    enabled: yes
+    state: restarted
 
 #setup monitoring
 - name: Create namespace for monitoring
@@ -382,21 +400,57 @@
             port: 3000
             targetPort: 3000
 
-- name: Ensure Prometheus port-forward stays up
-  shell: |
-    lsof -t -i:9090 | xargs -r kill -9
-    nohup kubectl -n monitoring port-forward --address 0.0.0.0 service/prometheus 9090:9090 > /dev/null 2>&1 &
-  async: 1
-  poll: 0
-  ignore_errors: true
+- name: Create systemd service file for prometheus port-forward
+  copy:
+    dest: /etc/systemd/system/prometheus-port-forward.service
+    content: |
+      [Unit]
+      Description=Port forward for prometheus service
+      After=network.target
 
-- name: Ensure Grafana port-forward stays up
-  shell: |
-    lsof -t -i:3000 | xargs -r kill -9
-    nohup kubectl -n monitoring port-forward --address 0.0.0.0 service/grafana 3000:3000 > /dev/null 2>&1 &
-  async: 1
-  poll: 0
-  ignore_errors: true
+      [Service]
+      User=root
+      ExecStart=/usr/bin/kubectl  -n monitoring port-forward --address 0.0.0.0 service/prometheus 9090:9090
+      Restart=always
+      RestartSec=5
+
+      [Install]
+      WantedBy=multi-user.target
+
+- name: Reload systemd to pick up new prometheus-port-forward service
+  command: systemctl daemon-reload
+
+- name: Enable and restart prometheus-port-forward service
+  systemd:
+    name: prometheus-port-forward
+    enabled: yes
+    state: restarted
+
+- name: Create systemd service file for grafana port-forward
+  copy:
+    dest: /etc/systemd/system/grafana-port-forward.service
+    content: |
+      [Unit]
+      Description=Port forward for grafana service
+      After=network.target
+
+      [Service]
+      User=root
+      ExecStart=/usr/bin/kubectl -n monitoring port-forward --address 0.0.0.0 service/grafana 3000:3000
+      Restart=always
+      RestartSec=5
+
+      [Install]
+      WantedBy=multi-user.target
+
+- name: Reload systemd to pick up new grafana-port-forward service
+  command: systemctl daemon-reload
+
+- name: Enable and restart grafana-port-forward service
+  systemd:
+    name: grafana-port-forward
+    enabled: yes
+    state: restarted
 
 - name: Create Prometheus datasource in Grafana
   community.grafana.grafana_datasource:
