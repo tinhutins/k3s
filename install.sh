@@ -31,16 +31,11 @@ echo "Installing required packages..."
 apt-get install git
 pip install kubernetes
 
-# Clone the repository
-echo "Removing existing repository if it exists..."
-rm -rf k3s/
-echo "Cloning the repository..."
-git clone https://tinhutins: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@github.com/tinhutins/k3s.git
-cd k3s/ansible/
-
+cd ansible/
 # Install Ansible requirements
 echo "Installing pip packages from requirements.txt..."
 pip3 install -r requirements.txt
+
 echo "Installing Ansible roles from requirements-galaxy.yml..."
 ansible-galaxy install -r requirements-galaxy.yml
 
