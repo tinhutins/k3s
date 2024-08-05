@@ -42,6 +42,7 @@ Accessing Services
  - Grafana: Available on http://localhost:3000
     - Username: admin
     - Password: admin
+    
 Notes
  - Ensure that ports 8080, 9090, and 3000 are not used by other services on your system.
  - This playbook is intended for and tested on Ubuntu 22.04. Running on other versions or distributions may require additional adjustments.
