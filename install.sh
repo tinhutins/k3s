@@ -2,6 +2,9 @@
 
 export NEEDRESTART_MODE=a
 
+# fix error dpkg was interrupted
+dpkg --configure -a
+
 # Install required dependencies
 echo "Installing required dependencies..."
 sudo apt-get install -y software-properties-common
