@@ -18,12 +18,12 @@ echo "Updating repositories after adding new PPA..."
 sudo apt-get update -y
 
 # Install desired new Python version and new Python venv version
-echo "Installing Python 3.11 and python3.11-venv..."
-sudo apt-get install -y python3.11 python3.11-venv
+echo "Installing Python 3.13 and python3.13-venv..."
+sudo apt-get install -y python3.13 python3.13-venv
 
 # Create a new virtual environment with the new Python version
-echo "Creating a new virtual environment with Python 3.11..."
-python3.11 -m venv k3s-venv
+echo "Creating a new virtual environment with Python 3.13..."
+python3.13 -m venv k3s-venv
 
 # Activate the virtual environment
 echo "Activating the virtual environment..."
@@ -31,7 +31,7 @@ source k3s-venv/bin/activate
 
 # Install required packages within the virtual environment
 echo "Installing required packages..."
-apt-get install git
+apt-get install -y git
 pip install kubernetes
 
 cd ansible/
