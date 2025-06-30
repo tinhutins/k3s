@@ -24,7 +24,7 @@ sudo apt-get install -y python3-pip python3.12 python3.12-dev python3.12-venv bu
 
 # Create a new virtual environment with the new Python version
 echo "Creating a new virtual environment with Python"
-python3.13 -m venv k3s-venv
+python3.12 -m venv k3s-venv
 
 # Activate the virtual environment
 echo "Activating the virtual environment..."
