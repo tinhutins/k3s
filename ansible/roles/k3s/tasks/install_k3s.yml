@@ -239,9 +239,10 @@
     grafana_url: http://localhost:3000
     grafana_user: admin
     grafana_password: admin
-    path: "{{ lookup('file', 'files/k6-dashboard.json') }}"
+    path: "files/k6-dashboard.json"
     folder: "General"
     overwrite: true
+  delegate_to: localhost
 
 #do a load test on nginx deployment
 - name: Delete k6 load test job if already exists 
