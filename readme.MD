@@ -11,12 +11,13 @@ This GitHub repository contains a Bash script and an Ansible playbook to automat
 1. Clone the repository:
    ```bash
    git clone https://github.com/tinhutins/k3s.git
-   ```bash
    cd k3s
+   ```
    
 2. Run the installation script:
     ```bash
     ./install.sh
+    ```
 
 This script will automatically handle everything, including:
  - Installing K3s 
