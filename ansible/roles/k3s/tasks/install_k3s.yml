@@ -239,7 +239,7 @@
     grafana_url: http://localhost:3000
     grafana_user: admin
     grafana_password: admin
-    dashboard_url: https://grafana.com/api/dashboards/19665/revisions/2/download
+    dashboard_file: "{{ lookup('file', 'files/k6-dashboard.json') }}"
     folder: "General"
     overwrite: true
 
