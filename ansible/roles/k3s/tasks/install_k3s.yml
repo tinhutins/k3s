@@ -239,7 +239,7 @@
     grafana_url: http://localhost:3000
     grafana_user: admin
     grafana_password: admin
-    dashboard_file: "{{ lookup('file', 'files/k6-dashboard.json') }}"
+    path: /tmp/k6-dashboard.json
     folder: "General"
     overwrite: true
 
