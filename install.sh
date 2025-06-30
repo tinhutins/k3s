@@ -18,15 +18,12 @@ echo "Updating repositories after adding new PPA..."
 sudo apt-get update -y
 
 # Install desired new Python version and new Python venv version
-echo "Installing Python 3.13 and python3.13-venv..."
-sudo apt-get install -y python3.13 python3.13-venv
+echo "Installing Python 3.12"
+sudo apt-get install -y python3-pip python3.12 python3.12-dev python3.12-venv build-essential
 
-# Ensure system build tools are installed for ruamel.yaml.clib and similar
-echo "Installing build dependencies required for pip packages..."
-sudo apt-get install -y build-essential python3-dev python3-pip
 
 # Create a new virtual environment with the new Python version
-echo "Creating a new virtual environment with Python 3.13..."
+echo "Creating a new virtual environment with Python"
 python3.13 -m venv k3s-venv
 
 # Activate the virtual environment
