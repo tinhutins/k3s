@@ -239,7 +239,7 @@
     grafana_url: http://localhost:3000
     grafana_user: admin
     grafana_password: admin
-    path: "files/k6-dashboard.json"
+    path: "{{ role_path }}/files/k6-dashboard.json"
     folder: "General"
     overwrite: true
   delegate_to: localhost
